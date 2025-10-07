@@ -1,5 +1,6 @@
 import { z, ZodType } from "zod";
 import Ajv from "ajv";
+import pkceChallenge from "pkce-challenge";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import getRawBody from "raw-body";
 import contentType from "content-type";
@@ -1707,6 +1708,1255 @@ const index$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePrope
   __proto__: null,
   Client
 }, Symbol.toStringTag, { value: "Module" }));
+const SafeUrlSchema = z.string().url().superRefine((val, ctx) => {
+  if (!URL.canParse(val)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "URL must be parseable",
+      fatal: true
+    });
+    return z.NEVER;
+  }
+}).refine(
+  (url) => {
+    const u = new URL(url);
+    return u.protocol !== "javascript:" && u.protocol !== "data:" && u.protocol !== "vbscript:";
+  },
+  { message: "URL cannot use javascript:, data:, or vbscript: scheme" }
+);
+const OAuthProtectedResourceMetadataSchema = z.object({
+  resource: z.string().url(),
+  authorization_servers: z.array(SafeUrlSchema).optional(),
+  jwks_uri: z.string().url().optional(),
+  scopes_supported: z.array(z.string()).optional(),
+  bearer_methods_supported: z.array(z.string()).optional(),
+  resource_signing_alg_values_supported: z.array(z.string()).optional(),
+  resource_name: z.string().optional(),
+  resource_documentation: z.string().optional(),
+  resource_policy_uri: z.string().url().optional(),
+  resource_tos_uri: z.string().url().optional(),
+  tls_client_certificate_bound_access_tokens: z.boolean().optional(),
+  authorization_details_types_supported: z.array(z.string()).optional(),
+  dpop_signing_alg_values_supported: z.array(z.string()).optional(),
+  dpop_bound_access_tokens_required: z.boolean().optional()
+}).passthrough();
+const OAuthMetadataSchema = z.object({
+  issuer: z.string(),
+  authorization_endpoint: SafeUrlSchema,
+  token_endpoint: SafeUrlSchema,
+  registration_endpoint: SafeUrlSchema.optional(),
+  scopes_supported: z.array(z.string()).optional(),
+  response_types_supported: z.array(z.string()),
+  response_modes_supported: z.array(z.string()).optional(),
+  grant_types_supported: z.array(z.string()).optional(),
+  token_endpoint_auth_methods_supported: z.array(z.string()).optional(),
+  token_endpoint_auth_signing_alg_values_supported: z.array(z.string()).optional(),
+  service_documentation: SafeUrlSchema.optional(),
+  revocation_endpoint: SafeUrlSchema.optional(),
+  revocation_endpoint_auth_methods_supported: z.array(z.string()).optional(),
+  revocation_endpoint_auth_signing_alg_values_supported: z.array(z.string()).optional(),
+  introspection_endpoint: z.string().optional(),
+  introspection_endpoint_auth_methods_supported: z.array(z.string()).optional(),
+  introspection_endpoint_auth_signing_alg_values_supported: z.array(z.string()).optional(),
+  code_challenge_methods_supported: z.array(z.string()).optional()
+}).passthrough();
+const OpenIdProviderMetadataSchema = z.object({
+  issuer: z.string(),
+  authorization_endpoint: SafeUrlSchema,
+  token_endpoint: SafeUrlSchema,
+  userinfo_endpoint: SafeUrlSchema.optional(),
+  jwks_uri: SafeUrlSchema,
+  registration_endpoint: SafeUrlSchema.optional(),
+  scopes_supported: z.array(z.string()).optional(),
+  response_types_supported: z.array(z.string()),
+  response_modes_supported: z.array(z.string()).optional(),
+  grant_types_supported: z.array(z.string()).optional(),
+  acr_values_supported: z.array(z.string()).optional(),
+  subject_types_supported: z.array(z.string()),
+  id_token_signing_alg_values_supported: z.array(z.string()),
+  id_token_encryption_alg_values_supported: z.array(z.string()).optional(),
+  id_token_encryption_enc_values_supported: z.array(z.string()).optional(),
+  userinfo_signing_alg_values_supported: z.array(z.string()).optional(),
+  userinfo_encryption_alg_values_supported: z.array(z.string()).optional(),
+  userinfo_encryption_enc_values_supported: z.array(z.string()).optional(),
+  request_object_signing_alg_values_supported: z.array(z.string()).optional(),
+  request_object_encryption_alg_values_supported: z.array(z.string()).optional(),
+  request_object_encryption_enc_values_supported: z.array(z.string()).optional(),
+  token_endpoint_auth_methods_supported: z.array(z.string()).optional(),
+  token_endpoint_auth_signing_alg_values_supported: z.array(z.string()).optional(),
+  display_values_supported: z.array(z.string()).optional(),
+  claim_types_supported: z.array(z.string()).optional(),
+  claims_supported: z.array(z.string()).optional(),
+  service_documentation: z.string().optional(),
+  claims_locales_supported: z.array(z.string()).optional(),
+  ui_locales_supported: z.array(z.string()).optional(),
+  claims_parameter_supported: z.boolean().optional(),
+  request_parameter_supported: z.boolean().optional(),
+  request_uri_parameter_supported: z.boolean().optional(),
+  require_request_uri_registration: z.boolean().optional(),
+  op_policy_uri: SafeUrlSchema.optional(),
+  op_tos_uri: SafeUrlSchema.optional()
+}).passthrough();
+const OpenIdProviderDiscoveryMetadataSchema = OpenIdProviderMetadataSchema.merge(
+  OAuthMetadataSchema.pick({
+    code_challenge_methods_supported: true
+  })
+);
+const OAuthTokensSchema = z.object({
+  access_token: z.string(),
+  id_token: z.string().optional(),
+  // Optional for OAuth 2.1, but necessary in OpenID Connect
+  token_type: z.string(),
+  expires_in: z.number().optional(),
+  scope: z.string().optional(),
+  refresh_token: z.string().optional()
+}).strip();
+const OAuthErrorResponseSchema = z.object({
+  error: z.string(),
+  error_description: z.string().optional(),
+  error_uri: z.string().optional()
+});
+const OAuthClientMetadataSchema = z.object({
+  redirect_uris: z.array(SafeUrlSchema),
+  token_endpoint_auth_method: z.string().optional(),
+  grant_types: z.array(z.string()).optional(),
+  response_types: z.array(z.string()).optional(),
+  client_name: z.string().optional(),
+  client_uri: SafeUrlSchema.optional(),
+  logo_uri: SafeUrlSchema.optional(),
+  scope: z.string().optional(),
+  contacts: z.array(z.string()).optional(),
+  tos_uri: SafeUrlSchema.optional(),
+  policy_uri: z.string().optional(),
+  jwks_uri: SafeUrlSchema.optional(),
+  jwks: z.any().optional(),
+  software_id: z.string().optional(),
+  software_version: z.string().optional(),
+  software_statement: z.string().optional()
+}).strip();
+const OAuthClientInformationSchema = z.object({
+  client_id: z.string(),
+  client_secret: z.string().optional(),
+  client_id_issued_at: z.number().optional(),
+  client_secret_expires_at: z.number().optional()
+}).strip();
+const OAuthClientInformationFullSchema = OAuthClientMetadataSchema.merge(OAuthClientInformationSchema);
+const OAuthClientRegistrationErrorSchema = z.object({
+  error: z.string(),
+  error_description: z.string().optional()
+}).strip();
+const OAuthTokenRevocationRequestSchema = z.object({
+  token: z.string(),
+  token_type_hint: z.string().optional()
+}).strip();
+function resourceUrlFromServerUrl(url) {
+  const resourceURL = typeof url === "string" ? new URL(url) : new URL(url.href);
+  resourceURL.hash = "";
+  return resourceURL;
+}
+function checkResourceAllowed({
+  requestedResource,
+  configuredResource
+}) {
+  const requested = typeof requestedResource === "string" ? new URL(requestedResource) : new URL(requestedResource.href);
+  const configured = typeof configuredResource === "string" ? new URL(configuredResource) : new URL(configuredResource.href);
+  if (requested.origin !== configured.origin) {
+    return false;
+  }
+  if (requested.pathname.length < configured.pathname.length) {
+    return false;
+  }
+  const requestedPath = requested.pathname.endsWith("/") ? requested.pathname : requested.pathname + "/";
+  const configuredPath = configured.pathname.endsWith("/") ? configured.pathname : configured.pathname + "/";
+  return requestedPath.startsWith(configuredPath);
+}
+class OAuthError extends Error {
+  constructor(message, errorUri) {
+    super(message);
+    this.errorUri = errorUri;
+    this.name = this.constructor.name;
+  }
+  /**
+   * Converts the error to a standard OAuth error response object
+   */
+  toResponseObject() {
+    const response = {
+      error: this.errorCode,
+      error_description: this.message
+    };
+    if (this.errorUri) {
+      response.error_uri = this.errorUri;
+    }
+    return response;
+  }
+  get errorCode() {
+    return this.constructor.errorCode;
+  }
+}
+class InvalidRequestError extends OAuthError {
+  static {
+    this.errorCode = "invalid_request";
+  }
+}
+class InvalidClientError extends OAuthError {
+  static {
+    this.errorCode = "invalid_client";
+  }
+}
+class InvalidGrantError extends OAuthError {
+  static {
+    this.errorCode = "invalid_grant";
+  }
+}
+class UnauthorizedClientError extends OAuthError {
+  static {
+    this.errorCode = "unauthorized_client";
+  }
+}
+class UnsupportedGrantTypeError extends OAuthError {
+  static {
+    this.errorCode = "unsupported_grant_type";
+  }
+}
+class InvalidScopeError extends OAuthError {
+  static {
+    this.errorCode = "invalid_scope";
+  }
+}
+class AccessDeniedError extends OAuthError {
+  static {
+    this.errorCode = "access_denied";
+  }
+}
+class ServerError extends OAuthError {
+  static {
+    this.errorCode = "server_error";
+  }
+}
+class TemporarilyUnavailableError extends OAuthError {
+  static {
+    this.errorCode = "temporarily_unavailable";
+  }
+}
+class UnsupportedResponseTypeError extends OAuthError {
+  static {
+    this.errorCode = "unsupported_response_type";
+  }
+}
+class UnsupportedTokenTypeError extends OAuthError {
+  static {
+    this.errorCode = "unsupported_token_type";
+  }
+}
+class InvalidTokenError extends OAuthError {
+  static {
+    this.errorCode = "invalid_token";
+  }
+}
+class MethodNotAllowedError extends OAuthError {
+  static {
+    this.errorCode = "method_not_allowed";
+  }
+}
+class TooManyRequestsError extends OAuthError {
+  static {
+    this.errorCode = "too_many_requests";
+  }
+}
+class InvalidClientMetadataError extends OAuthError {
+  static {
+    this.errorCode = "invalid_client_metadata";
+  }
+}
+class InsufficientScopeError extends OAuthError {
+  static {
+    this.errorCode = "insufficient_scope";
+  }
+}
+class CustomOAuthError extends OAuthError {
+  constructor(customErrorCode, message, errorUri) {
+    super(message, errorUri);
+    this.customErrorCode = customErrorCode;
+  }
+  get errorCode() {
+    return this.customErrorCode;
+  }
+}
+const OAUTH_ERRORS = {
+  [InvalidRequestError.errorCode]: InvalidRequestError,
+  [InvalidClientError.errorCode]: InvalidClientError,
+  [InvalidGrantError.errorCode]: InvalidGrantError,
+  [UnauthorizedClientError.errorCode]: UnauthorizedClientError,
+  [UnsupportedGrantTypeError.errorCode]: UnsupportedGrantTypeError,
+  [InvalidScopeError.errorCode]: InvalidScopeError,
+  [AccessDeniedError.errorCode]: AccessDeniedError,
+  [ServerError.errorCode]: ServerError,
+  [TemporarilyUnavailableError.errorCode]: TemporarilyUnavailableError,
+  [UnsupportedResponseTypeError.errorCode]: UnsupportedResponseTypeError,
+  [UnsupportedTokenTypeError.errorCode]: UnsupportedTokenTypeError,
+  [InvalidTokenError.errorCode]: InvalidTokenError,
+  [MethodNotAllowedError.errorCode]: MethodNotAllowedError,
+  [TooManyRequestsError.errorCode]: TooManyRequestsError,
+  [InvalidClientMetadataError.errorCode]: InvalidClientMetadataError,
+  [InsufficientScopeError.errorCode]: InsufficientScopeError
+};
+class UnauthorizedError extends Error {
+  constructor(message) {
+    super(message ?? "Unauthorized");
+  }
+}
+function selectClientAuthMethod(clientInformation, supportedMethods) {
+  const hasClientSecret = clientInformation.client_secret !== void 0;
+  if (supportedMethods.length === 0) {
+    return hasClientSecret ? "client_secret_post" : "none";
+  }
+  if (hasClientSecret && supportedMethods.includes("client_secret_basic")) {
+    return "client_secret_basic";
+  }
+  if (hasClientSecret && supportedMethods.includes("client_secret_post")) {
+    return "client_secret_post";
+  }
+  if (supportedMethods.includes("none")) {
+    return "none";
+  }
+  return hasClientSecret ? "client_secret_post" : "none";
+}
+function applyClientAuthentication(method, clientInformation, headers, params) {
+  const { client_id, client_secret } = clientInformation;
+  switch (method) {
+    case "client_secret_basic":
+      applyBasicAuth(client_id, client_secret, headers);
+      return;
+    case "client_secret_post":
+      applyPostAuth(client_id, client_secret, params);
+      return;
+    case "none":
+      applyPublicAuth(client_id, params);
+      return;
+    default:
+      throw new Error(`Unsupported client authentication method: ${method}`);
+  }
+}
+function applyBasicAuth(clientId, clientSecret, headers) {
+  if (!clientSecret) {
+    throw new Error("client_secret_basic authentication requires a client_secret");
+  }
+  const credentials = btoa(`${clientId}:${clientSecret}`);
+  headers.set("Authorization", `Basic ${credentials}`);
+}
+function applyPostAuth(clientId, clientSecret, params) {
+  params.set("client_id", clientId);
+  if (clientSecret) {
+    params.set("client_secret", clientSecret);
+  }
+}
+function applyPublicAuth(clientId, params) {
+  params.set("client_id", clientId);
+}
+async function parseErrorResponse(input) {
+  const statusCode = input instanceof Response ? input.status : void 0;
+  const body = input instanceof Response ? await input.text() : input;
+  try {
+    const result = OAuthErrorResponseSchema.parse(JSON.parse(body));
+    const { error, error_description, error_uri } = result;
+    const errorClass = OAUTH_ERRORS[error] || ServerError;
+    return new errorClass(error_description || "", error_uri);
+  } catch (error) {
+    const errorMessage = `${statusCode ? `HTTP ${statusCode}: ` : ""}Invalid OAuth error response: ${error}. Raw body: ${body}`;
+    return new ServerError(errorMessage);
+  }
+}
+async function auth(provider, options) {
+  try {
+    return await authInternal(provider, options);
+  } catch (error) {
+    if (error instanceof InvalidClientError || error instanceof UnauthorizedClientError) {
+      await provider.invalidateCredentials?.("all");
+      return await authInternal(provider, options);
+    } else if (error instanceof InvalidGrantError) {
+      await provider.invalidateCredentials?.("tokens");
+      return await authInternal(provider, options);
+    }
+    throw error;
+  }
+}
+async function authInternal(provider, {
+  serverUrl,
+  authorizationCode,
+  scope,
+  resourceMetadataUrl,
+  fetchFn
+}) {
+  let resourceMetadata;
+  let authorizationServerUrl;
+  try {
+    resourceMetadata = await discoverOAuthProtectedResourceMetadata(serverUrl, { resourceMetadataUrl }, fetchFn);
+    if (resourceMetadata.authorization_servers && resourceMetadata.authorization_servers.length > 0) {
+      authorizationServerUrl = resourceMetadata.authorization_servers[0];
+    }
+  } catch {
+  }
+  if (!authorizationServerUrl) {
+    authorizationServerUrl = serverUrl;
+  }
+  const resource = await selectResourceURL(serverUrl, provider, resourceMetadata);
+  const metadata = await discoverAuthorizationServerMetadata(authorizationServerUrl, {
+    fetchFn
+  });
+  let clientInformation = await Promise.resolve(provider.clientInformation());
+  if (!clientInformation) {
+    if (authorizationCode !== void 0) {
+      throw new Error("Existing OAuth client information is required when exchanging an authorization code");
+    }
+    if (!provider.saveClientInformation) {
+      throw new Error("OAuth client information must be saveable for dynamic registration");
+    }
+    const fullInformation = await registerClient(authorizationServerUrl, {
+      metadata,
+      clientMetadata: provider.clientMetadata,
+      fetchFn
+    });
+    await provider.saveClientInformation(fullInformation);
+    clientInformation = fullInformation;
+  }
+  if (authorizationCode !== void 0) {
+    const codeVerifier2 = await provider.codeVerifier();
+    const tokens2 = await exchangeAuthorization(authorizationServerUrl, {
+      metadata,
+      clientInformation,
+      authorizationCode,
+      codeVerifier: codeVerifier2,
+      redirectUri: provider.redirectUrl,
+      resource,
+      addClientAuthentication: provider.addClientAuthentication,
+      fetchFn
+    });
+    await provider.saveTokens(tokens2);
+    return "AUTHORIZED";
+  }
+  const tokens = await provider.tokens();
+  if (tokens?.refresh_token) {
+    try {
+      const newTokens = await refreshAuthorization(authorizationServerUrl, {
+        metadata,
+        clientInformation,
+        refreshToken: tokens.refresh_token,
+        resource,
+        addClientAuthentication: provider.addClientAuthentication,
+        fetchFn
+      });
+      await provider.saveTokens(newTokens);
+      return "AUTHORIZED";
+    } catch (error) {
+      if (!(error instanceof OAuthError) || error instanceof ServerError) {
+      } else {
+        throw error;
+      }
+    }
+  }
+  const state = provider.state ? await provider.state() : void 0;
+  const { authorizationUrl, codeVerifier } = await startAuthorization(authorizationServerUrl, {
+    metadata,
+    clientInformation,
+    state,
+    redirectUrl: provider.redirectUrl,
+    scope: scope || provider.clientMetadata.scope,
+    resource
+  });
+  await provider.saveCodeVerifier(codeVerifier);
+  await provider.redirectToAuthorization(authorizationUrl);
+  return "REDIRECT";
+}
+async function selectResourceURL(serverUrl, provider, resourceMetadata) {
+  const defaultResource = resourceUrlFromServerUrl(serverUrl);
+  if (provider.validateResourceURL) {
+    return await provider.validateResourceURL(defaultResource, resourceMetadata?.resource);
+  }
+  if (!resourceMetadata) {
+    return void 0;
+  }
+  if (!checkResourceAllowed({ requestedResource: defaultResource, configuredResource: resourceMetadata.resource })) {
+    throw new Error(`Protected resource ${resourceMetadata.resource} does not match expected ${defaultResource} (or origin)`);
+  }
+  return new URL(resourceMetadata.resource);
+}
+function extractResourceMetadataUrl(res) {
+  const authenticateHeader = res.headers.get("WWW-Authenticate");
+  if (!authenticateHeader) {
+    return void 0;
+  }
+  const [type, scheme] = authenticateHeader.split(" ");
+  if (type.toLowerCase() !== "bearer" || !scheme) {
+    return void 0;
+  }
+  const regex = /resource_metadata="([^"]*)"/;
+  const match = regex.exec(authenticateHeader);
+  if (!match) {
+    return void 0;
+  }
+  try {
+    return new URL(match[1]);
+  } catch {
+    return void 0;
+  }
+}
+async function discoverOAuthProtectedResourceMetadata(serverUrl, opts, fetchFn = fetch) {
+  const response = await discoverMetadataWithFallback(serverUrl, "oauth-protected-resource", fetchFn, {
+    protocolVersion: opts?.protocolVersion,
+    metadataUrl: opts?.resourceMetadataUrl
+  });
+  if (!response || response.status === 404) {
+    throw new Error(`Resource server does not implement OAuth 2.0 Protected Resource Metadata.`);
+  }
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} trying to load well-known OAuth protected resource metadata.`);
+  }
+  return OAuthProtectedResourceMetadataSchema.parse(await response.json());
+}
+async function fetchWithCorsRetry(url, headers, fetchFn = fetch) {
+  try {
+    return await fetchFn(url, { headers });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      if (headers) {
+        return fetchWithCorsRetry(url, void 0, fetchFn);
+      } else {
+        return void 0;
+      }
+    }
+    throw error;
+  }
+}
+function buildWellKnownPath(wellKnownPrefix, pathname = "", options = {}) {
+  if (pathname.endsWith("/")) {
+    pathname = pathname.slice(0, -1);
+  }
+  return options.prependPathname ? `${pathname}/.well-known/${wellKnownPrefix}` : `/.well-known/${wellKnownPrefix}${pathname}`;
+}
+async function tryMetadataDiscovery(url, protocolVersion, fetchFn = fetch) {
+  const headers = {
+    "MCP-Protocol-Version": protocolVersion
+  };
+  return await fetchWithCorsRetry(url, headers, fetchFn);
+}
+function shouldAttemptFallback(response, pathname) {
+  return !response || response.status >= 400 && response.status < 500 && pathname !== "/";
+}
+async function discoverMetadataWithFallback(serverUrl, wellKnownType, fetchFn, opts) {
+  const issuer = new URL(serverUrl);
+  const protocolVersion = opts?.protocolVersion ?? LATEST_PROTOCOL_VERSION;
+  let url;
+  if (opts?.metadataUrl) {
+    url = new URL(opts.metadataUrl);
+  } else {
+    const wellKnownPath = buildWellKnownPath(wellKnownType, issuer.pathname);
+    url = new URL(wellKnownPath, opts?.metadataServerUrl ?? issuer);
+    url.search = issuer.search;
+  }
+  let response = await tryMetadataDiscovery(url, protocolVersion, fetchFn);
+  if (!opts?.metadataUrl && shouldAttemptFallback(response, issuer.pathname)) {
+    const rootUrl = new URL(`/.well-known/${wellKnownType}`, issuer);
+    response = await tryMetadataDiscovery(rootUrl, protocolVersion, fetchFn);
+  }
+  return response;
+}
+async function discoverOAuthMetadata(issuer, {
+  authorizationServerUrl,
+  protocolVersion
+} = {}, fetchFn = fetch) {
+  if (typeof issuer === "string") {
+    issuer = new URL(issuer);
+  }
+  if (!authorizationServerUrl) {
+    authorizationServerUrl = issuer;
+  }
+  if (typeof authorizationServerUrl === "string") {
+    authorizationServerUrl = new URL(authorizationServerUrl);
+  }
+  protocolVersion ??= LATEST_PROTOCOL_VERSION;
+  const response = await discoverMetadataWithFallback(authorizationServerUrl, "oauth-authorization-server", fetchFn, {
+    protocolVersion,
+    metadataServerUrl: authorizationServerUrl
+  });
+  if (!response || response.status === 404) {
+    return void 0;
+  }
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} trying to load well-known OAuth metadata`);
+  }
+  return OAuthMetadataSchema.parse(await response.json());
+}
+function buildDiscoveryUrls(authorizationServerUrl) {
+  const url = typeof authorizationServerUrl === "string" ? new URL(authorizationServerUrl) : authorizationServerUrl;
+  const hasPath = url.pathname !== "/";
+  const urlsToTry = [];
+  if (!hasPath) {
+    urlsToTry.push({
+      url: new URL("/.well-known/oauth-authorization-server", url.origin),
+      type: "oauth"
+    });
+    urlsToTry.push({
+      url: new URL(`/.well-known/openid-configuration`, url.origin),
+      type: "oidc"
+    });
+    return urlsToTry;
+  }
+  let pathname = url.pathname;
+  if (pathname.endsWith("/")) {
+    pathname = pathname.slice(0, -1);
+  }
+  urlsToTry.push({
+    url: new URL(`/.well-known/oauth-authorization-server${pathname}`, url.origin),
+    type: "oauth"
+  });
+  urlsToTry.push({
+    url: new URL("/.well-known/oauth-authorization-server", url.origin),
+    type: "oauth"
+  });
+  urlsToTry.push({
+    url: new URL(`/.well-known/openid-configuration${pathname}`, url.origin),
+    type: "oidc"
+  });
+  urlsToTry.push({
+    url: new URL(`${pathname}/.well-known/openid-configuration`, url.origin),
+    type: "oidc"
+  });
+  return urlsToTry;
+}
+async function discoverAuthorizationServerMetadata(authorizationServerUrl, {
+  fetchFn = fetch,
+  protocolVersion = LATEST_PROTOCOL_VERSION
+} = {}) {
+  const headers = { "MCP-Protocol-Version": protocolVersion };
+  const urlsToTry = buildDiscoveryUrls(authorizationServerUrl);
+  for (const { url: endpointUrl, type } of urlsToTry) {
+    const response = await fetchWithCorsRetry(endpointUrl, headers, fetchFn);
+    if (!response) {
+      continue;
+    }
+    if (!response.ok) {
+      if (response.status >= 400 && response.status < 500) {
+        continue;
+      }
+      throw new Error(
+        `HTTP ${response.status} trying to load ${type === "oauth" ? "OAuth" : "OpenID provider"} metadata from ${endpointUrl}`
+      );
+    }
+    if (type === "oauth") {
+      return OAuthMetadataSchema.parse(await response.json());
+    } else {
+      const metadata = OpenIdProviderDiscoveryMetadataSchema.parse(await response.json());
+      if (!metadata.code_challenge_methods_supported?.includes("S256")) {
+        throw new Error(
+          `Incompatible OIDC provider at ${endpointUrl}: does not support S256 code challenge method required by MCP specification`
+        );
+      }
+      return metadata;
+    }
+  }
+  return void 0;
+}
+async function startAuthorization(authorizationServerUrl, {
+  metadata,
+  clientInformation,
+  redirectUrl,
+  scope,
+  state,
+  resource
+}) {
+  const responseType = "code";
+  const codeChallengeMethod = "S256";
+  let authorizationUrl;
+  if (metadata) {
+    authorizationUrl = new URL(metadata.authorization_endpoint);
+    if (!metadata.response_types_supported.includes(responseType)) {
+      throw new Error(`Incompatible auth server: does not support response type ${responseType}`);
+    }
+    if (!metadata.code_challenge_methods_supported || !metadata.code_challenge_methods_supported.includes(codeChallengeMethod)) {
+      throw new Error(`Incompatible auth server: does not support code challenge method ${codeChallengeMethod}`);
+    }
+  } else {
+    authorizationUrl = new URL("/authorize", authorizationServerUrl);
+  }
+  const challenge = await pkceChallenge();
+  const codeVerifier = challenge.code_verifier;
+  const codeChallenge = challenge.code_challenge;
+  authorizationUrl.searchParams.set("response_type", responseType);
+  authorizationUrl.searchParams.set("client_id", clientInformation.client_id);
+  authorizationUrl.searchParams.set("code_challenge", codeChallenge);
+  authorizationUrl.searchParams.set("code_challenge_method", codeChallengeMethod);
+  authorizationUrl.searchParams.set("redirect_uri", String(redirectUrl));
+  if (state) {
+    authorizationUrl.searchParams.set("state", state);
+  }
+  if (scope) {
+    authorizationUrl.searchParams.set("scope", scope);
+  }
+  if (scope?.includes("offline_access")) {
+    authorizationUrl.searchParams.append("prompt", "consent");
+  }
+  if (resource) {
+    authorizationUrl.searchParams.set("resource", resource.href);
+  }
+  return { authorizationUrl, codeVerifier };
+}
+async function exchangeAuthorization(authorizationServerUrl, {
+  metadata,
+  clientInformation,
+  authorizationCode,
+  codeVerifier,
+  redirectUri,
+  resource,
+  addClientAuthentication,
+  fetchFn
+}) {
+  const grantType = "authorization_code";
+  const tokenUrl = metadata?.token_endpoint ? new URL(metadata.token_endpoint) : new URL("/token", authorizationServerUrl);
+  if (metadata?.grant_types_supported && !metadata.grant_types_supported.includes(grantType)) {
+    throw new Error(`Incompatible auth server: does not support grant type ${grantType}`);
+  }
+  const headers = new Headers({
+    "Content-Type": "application/x-www-form-urlencoded",
+    Accept: "application/json"
+  });
+  const params = new URLSearchParams({
+    grant_type: grantType,
+    code: authorizationCode,
+    code_verifier: codeVerifier,
+    redirect_uri: String(redirectUri)
+  });
+  if (addClientAuthentication) {
+    addClientAuthentication(headers, params, authorizationServerUrl, metadata);
+  } else {
+    const supportedMethods = metadata?.token_endpoint_auth_methods_supported ?? [];
+    const authMethod = selectClientAuthMethod(clientInformation, supportedMethods);
+    applyClientAuthentication(authMethod, clientInformation, headers, params);
+  }
+  if (resource) {
+    params.set("resource", resource.href);
+  }
+  const response = await (fetchFn ?? fetch)(tokenUrl, {
+    method: "POST",
+    headers,
+    body: params
+  });
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+  return OAuthTokensSchema.parse(await response.json());
+}
+async function refreshAuthorization(authorizationServerUrl, {
+  metadata,
+  clientInformation,
+  refreshToken,
+  resource,
+  addClientAuthentication,
+  fetchFn
+}) {
+  const grantType = "refresh_token";
+  let tokenUrl;
+  if (metadata) {
+    tokenUrl = new URL(metadata.token_endpoint);
+    if (metadata.grant_types_supported && !metadata.grant_types_supported.includes(grantType)) {
+      throw new Error(`Incompatible auth server: does not support grant type ${grantType}`);
+    }
+  } else {
+    tokenUrl = new URL("/token", authorizationServerUrl);
+  }
+  const headers = new Headers({
+    "Content-Type": "application/x-www-form-urlencoded"
+  });
+  const params = new URLSearchParams({
+    grant_type: grantType,
+    refresh_token: refreshToken
+  });
+  if (addClientAuthentication) {
+    addClientAuthentication(headers, params, authorizationServerUrl, metadata);
+  } else {
+    const supportedMethods = metadata?.token_endpoint_auth_methods_supported ?? [];
+    const authMethod = selectClientAuthMethod(clientInformation, supportedMethods);
+    applyClientAuthentication(authMethod, clientInformation, headers, params);
+  }
+  if (resource) {
+    params.set("resource", resource.href);
+  }
+  const response = await (fetchFn ?? fetch)(tokenUrl, {
+    method: "POST",
+    headers,
+    body: params
+  });
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+  return OAuthTokensSchema.parse({ refresh_token: refreshToken, ...await response.json() });
+}
+async function registerClient(authorizationServerUrl, {
+  metadata,
+  clientMetadata,
+  fetchFn
+}) {
+  let registrationUrl;
+  if (metadata) {
+    if (!metadata.registration_endpoint) {
+      throw new Error("Incompatible auth server: does not support dynamic client registration");
+    }
+    registrationUrl = new URL(metadata.registration_endpoint);
+  } else {
+    registrationUrl = new URL("/register", authorizationServerUrl);
+  }
+  const response = await (fetchFn ?? fetch)(registrationUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(clientMetadata)
+  });
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+  return OAuthClientInformationFullSchema.parse(await response.json());
+}
+var __defProp = Object.defineProperty, __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value, __publicField = (obj, key, value) => __defNormalProp(obj, typeof key != "symbol" ? key + "" : key, value);
+class ParseError extends Error {
+  constructor(message, options) {
+    super(message), __publicField(this, "type"), __publicField(this, "field"), __publicField(this, "value"), __publicField(this, "line"), this.name = "ParseError", this.type = options.type, this.field = options.field, this.value = options.value, this.line = options.line;
+  }
+}
+function noop(_arg) {
+}
+function createParser(callbacks) {
+  const { onEvent = noop, onError = noop, onRetry = noop, onComment } = callbacks;
+  let incompleteLine = "", isFirstChunk = true, id, data = "", eventType = "";
+  function feed(newChunk) {
+    const chunk = isFirstChunk ? newChunk.replace(/^\xEF\xBB\xBF/, "") : newChunk, [complete, incomplete] = splitLines(`${incompleteLine}${chunk}`);
+    for (const line of complete)
+      parseLine(line);
+    incompleteLine = incomplete, isFirstChunk = false;
+  }
+  function parseLine(line) {
+    if (line === "") {
+      dispatchEvent();
+      return;
+    }
+    if (line.startsWith(":")) {
+      onComment && onComment(line.slice(line.startsWith(": ") ? 2 : 1));
+      return;
+    }
+    const fieldSeparatorIndex = line.indexOf(":");
+    if (fieldSeparatorIndex !== -1) {
+      const field = line.slice(0, fieldSeparatorIndex), offset = line[fieldSeparatorIndex + 1] === " " ? 2 : 1, value = line.slice(fieldSeparatorIndex + offset);
+      processField(field, value, line);
+      return;
+    }
+    processField(line, "", line);
+  }
+  function processField(field, value, line) {
+    switch (field) {
+      case "event":
+        eventType = value;
+        break;
+      case "data":
+        data = `${data}${value}
+`;
+        break;
+      case "id":
+        id = value.includes("\0") ? void 0 : value;
+        break;
+      case "retry":
+        /^\d+$/.test(value) ? onRetry(parseInt(value, 10)) : onError(
+          new ParseError(`Invalid \`retry\` value: "${value}"`, {
+            type: "invalid-retry",
+            value,
+            line
+          })
+        );
+        break;
+      default:
+        onError(
+          new ParseError(
+            `Unknown field "${field.length > 20 ? `${field.slice(0, 20)}…` : field}"`,
+            { type: "unknown-field", field, value, line }
+          )
+        );
+        break;
+    }
+  }
+  function dispatchEvent() {
+    data.length > 0 && onEvent({
+      id,
+      event: eventType || void 0,
+      // If the data buffer's last character is a U+000A LINE FEED (LF) character,
+      // then remove the last character from the data buffer.
+      data: data.endsWith(`
+`) ? data.slice(0, -1) : data
+    }), id = void 0, data = "", eventType = "";
+  }
+  function reset(options = {}) {
+    incompleteLine && options.consume && parseLine(incompleteLine), id = void 0, data = "", eventType = "", incompleteLine = "";
+  }
+  return { feed, reset };
+}
+function splitLines(chunk) {
+  const lines = [];
+  let incompleteLine = "";
+  const totalLength = chunk.length;
+  for (let i = 0; i < totalLength; i++) {
+    const char = chunk[i];
+    char === "\r" && chunk[i + 1] === `
+` ? (lines.push(incompleteLine), incompleteLine = "", i++) : char === "\r" || char === `
+` ? (lines.push(incompleteLine), incompleteLine = "") : incompleteLine += char;
+  }
+  return [lines, incompleteLine];
+}
+class EventSourceParserStream extends TransformStream {
+  constructor({ onError, onRetry, onComment } = {}) {
+    let parser;
+    super({
+      start(controller) {
+        parser = createParser({
+          onEvent: (event) => {
+            controller.enqueue(event);
+          },
+          onError(error) {
+            onError === "terminate" ? controller.error(error) : typeof onError == "function" && onError(error);
+          },
+          onRetry,
+          onComment
+        });
+      },
+      transform(chunk) {
+        parser.feed(chunk);
+      }
+    });
+  }
+}
+const DEFAULT_STREAMABLE_HTTP_RECONNECTION_OPTIONS = {
+  initialReconnectionDelay: 1e3,
+  maxReconnectionDelay: 3e4,
+  reconnectionDelayGrowFactor: 1.5,
+  maxRetries: 2
+};
+class StreamableHTTPError extends Error {
+  constructor(code, message) {
+    super(`Streamable HTTP error: ${message}`);
+    this.code = code;
+  }
+}
+class StreamableHTTPClientTransport {
+  constructor(url, opts) {
+    this._hasCompletedAuthFlow = false;
+    this._url = url;
+    this._resourceMetadataUrl = void 0;
+    this._requestInit = opts?.requestInit;
+    this._authProvider = opts?.authProvider;
+    this._fetch = opts?.fetch;
+    this._sessionId = opts?.sessionId;
+    this._reconnectionOptions = opts?.reconnectionOptions ?? DEFAULT_STREAMABLE_HTTP_RECONNECTION_OPTIONS;
+  }
+  async _authThenStart() {
+    if (!this._authProvider) {
+      throw new UnauthorizedError("No auth provider");
+    }
+    let result;
+    try {
+      result = await auth(this._authProvider, {
+        serverUrl: this._url,
+        resourceMetadataUrl: this._resourceMetadataUrl,
+        fetchFn: this._fetch
+      });
+    } catch (error) {
+      this.onerror?.(error);
+      throw error;
+    }
+    if (result !== "AUTHORIZED") {
+      throw new UnauthorizedError();
+    }
+    return await this._startOrAuthSse({ resumptionToken: void 0 });
+  }
+  async _commonHeaders() {
+    const headers = {};
+    if (this._authProvider) {
+      const tokens = await this._authProvider.tokens();
+      if (tokens) {
+        headers["Authorization"] = `Bearer ${tokens.access_token}`;
+      }
+    }
+    if (this._sessionId) {
+      headers["mcp-session-id"] = this._sessionId;
+    }
+    if (this._protocolVersion) {
+      headers["mcp-protocol-version"] = this._protocolVersion;
+    }
+    const extraHeaders = this._normalizeHeaders(this._requestInit?.headers);
+    return new Headers({
+      ...headers,
+      ...extraHeaders
+    });
+  }
+  async _startOrAuthSse(options) {
+    const { resumptionToken } = options;
+    try {
+      const headers = await this._commonHeaders();
+      headers.set("Accept", "text/event-stream");
+      if (resumptionToken) {
+        headers.set("last-event-id", resumptionToken);
+      }
+      const response = await (this._fetch ?? fetch)(this._url, {
+        method: "GET",
+        headers,
+        signal: this._abortController?.signal
+      });
+      if (!response.ok) {
+        if (response.status === 401 && this._authProvider) {
+          return await this._authThenStart();
+        }
+        if (response.status === 405) {
+          return;
+        }
+        throw new StreamableHTTPError(response.status, `Failed to open SSE stream: ${response.statusText}`);
+      }
+      this._handleSseStream(response.body, options, true);
+    } catch (error) {
+      this.onerror?.(error);
+      throw error;
+    }
+  }
+  /**
+   * Calculates the next reconnection delay using  backoff algorithm
+   *
+   * @param attempt Current reconnection attempt count for the specific stream
+   * @returns Time to wait in milliseconds before next reconnection attempt
+   */
+  _getNextReconnectionDelay(attempt) {
+    const initialDelay = this._reconnectionOptions.initialReconnectionDelay;
+    const growFactor = this._reconnectionOptions.reconnectionDelayGrowFactor;
+    const maxDelay = this._reconnectionOptions.maxReconnectionDelay;
+    return Math.min(initialDelay * Math.pow(growFactor, attempt), maxDelay);
+  }
+  _normalizeHeaders(headers) {
+    if (!headers) return {};
+    if (headers instanceof Headers) {
+      return Object.fromEntries(headers.entries());
+    }
+    if (Array.isArray(headers)) {
+      return Object.fromEntries(headers);
+    }
+    return { ...headers };
+  }
+  /**
+   * Schedule a reconnection attempt with exponential backoff
+   *
+   * @param lastEventId The ID of the last received event for resumability
+   * @param attemptCount Current reconnection attempt count for this specific stream
+   */
+  _scheduleReconnection(options, attemptCount = 0) {
+    const maxRetries = this._reconnectionOptions.maxRetries;
+    if (maxRetries > 0 && attemptCount >= maxRetries) {
+      this.onerror?.(new Error(`Maximum reconnection attempts (${maxRetries}) exceeded.`));
+      return;
+    }
+    const delay = this._getNextReconnectionDelay(attemptCount);
+    setTimeout(() => {
+      this._startOrAuthSse(options).catch((error) => {
+        this.onerror?.(new Error(`Failed to reconnect SSE stream: ${error instanceof Error ? error.message : String(error)}`));
+        this._scheduleReconnection(options, attemptCount + 1);
+      });
+    }, delay);
+  }
+  _handleSseStream(stream, options, isReconnectable) {
+    if (!stream) {
+      return;
+    }
+    const { onresumptiontoken, replayMessageId } = options;
+    let lastEventId;
+    const processStream = async () => {
+      try {
+        const reader = stream.pipeThrough(new TextDecoderStream()).pipeThrough(new EventSourceParserStream()).getReader();
+        while (true) {
+          const { value: event, done } = await reader.read();
+          if (done) {
+            break;
+          }
+          if (event.id) {
+            lastEventId = event.id;
+            onresumptiontoken?.(event.id);
+          }
+          if (!event.event || event.event === "message") {
+            try {
+              const message = JSONRPCMessageSchema.parse(JSON.parse(event.data));
+              if (replayMessageId !== void 0 && isJSONRPCResponse(message)) {
+                message.id = replayMessageId;
+              }
+              this.onmessage?.(message);
+            } catch (error) {
+              this.onerror?.(error);
+            }
+          }
+        }
+      } catch (error) {
+        this.onerror?.(new Error(`SSE stream disconnected: ${error}`));
+        if (isReconnectable && this._abortController && !this._abortController.signal.aborted) {
+          try {
+            this._scheduleReconnection(
+              {
+                resumptionToken: lastEventId,
+                onresumptiontoken,
+                replayMessageId
+              },
+              0
+            );
+          } catch (error2) {
+            this.onerror?.(new Error(`Failed to reconnect: ${error2 instanceof Error ? error2.message : String(error2)}`));
+          }
+        }
+      }
+    };
+    processStream();
+  }
+  async start() {
+    if (this._abortController) {
+      throw new Error(
+        "StreamableHTTPClientTransport already started! If using Client class, note that connect() calls start() automatically."
+      );
+    }
+    this._abortController = new AbortController();
+  }
+  /**
+   * Call this method after the user has finished authorizing via their user agent and is redirected back to the MCP client application. This will exchange the authorization code for an access token, enabling the next connection attempt to successfully auth.
+   */
+  async finishAuth(authorizationCode) {
+    if (!this._authProvider) {
+      throw new UnauthorizedError("No auth provider");
+    }
+    const result = await auth(this._authProvider, {
+      serverUrl: this._url,
+      authorizationCode,
+      resourceMetadataUrl: this._resourceMetadataUrl,
+      fetchFn: this._fetch
+    });
+    if (result !== "AUTHORIZED") {
+      throw new UnauthorizedError("Failed to authorize");
+    }
+  }
+  async close() {
+    this._abortController?.abort();
+    this.onclose?.();
+  }
+  async send(message, options) {
+    try {
+      const { resumptionToken, onresumptiontoken } = options || {};
+      if (resumptionToken) {
+        this._startOrAuthSse({ resumptionToken, replayMessageId: isJSONRPCRequest(message) ? message.id : void 0 }).catch(
+          (err) => this.onerror?.(err)
+        );
+        return;
+      }
+      const headers = await this._commonHeaders();
+      headers.set("content-type", "application/json");
+      headers.set("accept", "application/json, text/event-stream");
+      const init = {
+        ...this._requestInit,
+        method: "POST",
+        headers,
+        body: JSON.stringify(message),
+        signal: this._abortController?.signal
+      };
+      const response = await (this._fetch ?? fetch)(this._url, init);
+      const sessionId = response.headers.get("mcp-session-id");
+      if (sessionId) {
+        this._sessionId = sessionId;
+      }
+      if (!response.ok) {
+        if (response.status === 401 && this._authProvider) {
+          if (this._hasCompletedAuthFlow) {
+            throw new StreamableHTTPError(401, "Server returned 401 after successful authentication");
+          }
+          this._resourceMetadataUrl = extractResourceMetadataUrl(response);
+          const result = await auth(this._authProvider, {
+            serverUrl: this._url,
+            resourceMetadataUrl: this._resourceMetadataUrl,
+            fetchFn: this._fetch
+          });
+          if (result !== "AUTHORIZED") {
+            throw new UnauthorizedError();
+          }
+          this._hasCompletedAuthFlow = true;
+          return this.send(message);
+        }
+        const text = await response.text().catch(() => null);
+        throw new Error(`Error POSTing to endpoint (HTTP ${response.status}): ${text}`);
+      }
+      this._hasCompletedAuthFlow = false;
+      if (response.status === 202) {
+        if (isInitializedNotification(message)) {
+          this._startOrAuthSse({ resumptionToken: void 0 }).catch((err) => this.onerror?.(err));
+        }
+        return;
+      }
+      const messages = Array.isArray(message) ? message : [message];
+      const hasRequests = messages.filter((msg) => "method" in msg && "id" in msg && msg.id !== void 0).length > 0;
+      const contentType2 = response.headers.get("content-type");
+      if (hasRequests) {
+        if (contentType2?.includes("text/event-stream")) {
+          this._handleSseStream(response.body, { onresumptiontoken }, false);
+        } else if (contentType2?.includes("application/json")) {
+          const data = await response.json();
+          const responseMessages = Array.isArray(data) ? data.map((msg) => JSONRPCMessageSchema.parse(msg)) : [JSONRPCMessageSchema.parse(data)];
+          for (const msg of responseMessages) {
+            this.onmessage?.(msg);
+          }
+        } else {
+          throw new StreamableHTTPError(-1, `Unexpected content type: ${contentType2}`);
+        }
+      }
+    } catch (error) {
+      this.onerror?.(error);
+      throw error;
+    }
+  }
+  get sessionId() {
+    return this._sessionId;
+  }
+  /**
+   * Terminates the current session by sending a DELETE request to the server.
+   *
+   * Clients that no longer need a particular session
+   * (e.g., because the user is leaving the client application) SHOULD send an
+   * HTTP DELETE to the MCP endpoint with the Mcp-Session-Id header to explicitly
+   * terminate the session.
+   *
+   * The server MAY respond with HTTP 405 Method Not Allowed, indicating that
+   * the server does not allow clients to terminate sessions.
+   */
+  async terminateSession() {
+    if (!this._sessionId) {
+      return;
+    }
+    try {
+      const headers = await this._commonHeaders();
+      const init = {
+        ...this._requestInit,
+        method: "DELETE",
+        headers,
+        signal: this._abortController?.signal
+      };
+      const response = await (this._fetch ?? fetch)(this._url, init);
+      if (!response.ok && response.status !== 405) {
+        throw new StreamableHTTPError(response.status, `Failed to terminate session: ${response.statusText}`);
+      }
+      this._sessionId = void 0;
+    } catch (error) {
+      this.onerror?.(error);
+      throw error;
+    }
+  }
+  setProtocolVersion(version) {
+    this._protocolVersion = version;
+  }
+  get protocolVersion() {
+    return this._protocolVersion;
+  }
+}
 class InMemoryTransport {
   constructor() {
     this._messageQueue = [];
@@ -3425,6 +4675,7 @@ const streamableHttp = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defi
   StreamableHTTPServerTransport
 }, Symbol.toStringTag, { value: "Module" }));
 export {
+  StreamableHTTPClientTransport,
   index$1 as client,
   inMemory,
   mcp,
