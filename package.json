@@ -1,0 +1,24 @@
+{
+  "name": "mcpsdk",
+  "version": "1.0.0",
+  "description": "MCP SDK release from MCP SDK fork in ploinkyRepos",
+  "main": "cjs/index.js",
+  "module": "esm/index.js",
+  "types": "esm/types.js",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./esm/types.js",
+        "default": "./esm/index.js"
+      },
+      "require": {
+        "types": "./cjs/types.js",
+        "default": "./cjs/index.js"
+      }
+    }
+  },
+  "files": [
+    "cjs",
+    "esm"
+  ]
+}
