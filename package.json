@@ -1,0 +1,10 @@
+{
+    "name": "@modelcontextprotocol/sdk",
+    "version": "1.19.1",
+    "type": "module",
+    "main": "./index.mjs",
+    "module": "./index.mjs",
+    "exports": {
+        ".": "./index.mjs"
+    }
+}
